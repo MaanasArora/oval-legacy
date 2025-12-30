@@ -3,6 +3,8 @@ import numpy as np
 import pandas
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
+from scipy.ndimage import gaussian_filter
+from matplotlib import pyplot as plt
 from fastapi import FastAPI
 from pydantic import BaseModel
 from sqlalchemy import create_engine
@@ -46,6 +48,9 @@ def process_csv(
     reduced, model = decompose_votes(
         votes_matrix_nonan, random_state=random_state, num_components=num_components
     )
+    reduced_2d, model_2d = decompose_votes(
+        votes_matrix_nonan, random_state=random_state, num_components=2
+    )
 
     comment_projections = model.components_.T
     comment_projections = pandas.DataFrame(
@@ -55,7 +60,7 @@ def process_csv(
     )
     comments = pandas.DataFrame(comments).join(comment_projections)
 
-    return reduced, comments, votes_matrix, model
+    return reduced, comments, votes_matrix, model, reduced_2d, model_2d
 
 
 def save_reduced(reduced: np.ndarray, report_dir: Path, filename: str = "reduced.npy"):
@@ -75,7 +80,7 @@ def save_comments(
 
 
 def regress_variable(reduced: np.ndarray, variable: np.ndarray):
-    model = LinearRegression()
+    model = LinearRegression(fit_intercept=False)
     model.fit(reduced, variable)
     r_squared = model.score(reduced, variable)
     return model, r_squared
@@ -135,12 +140,13 @@ class CommentVariableMapping(BaseModel):
 
 
 class RegressVariableRequest(BaseModel):
+    variable_name: str
     mappings: list[CommentVariableMapping]
 
 
 @app.post("/load_data/")
 def load_data(request: LoadDataRequest):
-    reduced, comments, votes_matrix, _ = process_csv(
+    reduced, comments, votes_matrix, _, reduced_2d, _ = process_csv(
         request.comments_csv,
         request.votes_matrix_csv,
         request.random_state,
@@ -148,6 +154,7 @@ def load_data(request: LoadDataRequest):
     )
 
     save_reduced(reduced, report_dir=Path("data/"), filename="reduced.npy")
+    save_reduced(reduced_2d, report_dir=Path("data/"), filename="reduced_2d.npy")
     save_comments(comments, report_dir=Path("data/"), filename="comments.csv")
 
     return {
@@ -158,7 +165,8 @@ def load_data(request: LoadDataRequest):
 
 
 @app.post("/regress_variable/")
-def regress_variable_endpoint(mappings: list[CommentVariableMapping]):
+def regress_variable_endpoint(request: RegressVariableRequest):
+    mappings = request.mappings
     reduced = np.load(Path("data/reduced.npy"))
     comments = pandas.read_csv(Path("data/comments.csv")).set_index("comment-id")
 
@@ -171,13 +179,14 @@ def regress_variable_endpoint(mappings: list[CommentVariableMapping]):
 
     save_model(
         np.array(model.coef_ + [model.intercept_]),
-        report_dir=Path("data/"),
+        report_dir=Path("data/") / request.variable_name,
         filename="regression_model.npy",
     )
     score_and_save_comments(
         comments,
         model,
-        report_dir=Path("data/"),
+        report_dir=Path("data/") / request.variable_name,
+        filename="scored_comments.csv",
     )
 
     return {
@@ -187,7 +196,57 @@ def regress_variable_endpoint(mappings: list[CommentVariableMapping]):
     }
 
 
-@app.get("/get_scored_comments/")
-def get_scored_comments():
-    scored_comments = pandas.read_csv(Path("data/scored_comments.csv"))
+@app.get("/comments/{variable_name}")
+def get_scored_comments(variable_name: str):
+    scored_comments = pandas.read_csv(
+        Path("data/") / variable_name / "scored_comments.csv"
+    )
     return scored_comments.to_dict(orient="records")
+
+
+@app.get("/visualize/{variable_name}")
+def visualize_variable(variable_name: str):
+    reduced = np.load(Path("data/reduced.npy"))
+    reduced_2d = np.load(Path("data/reduced_2d.npy"))
+    model = np.load(Path("data/") / variable_name / "regression_model.npy")
+
+    participant_scores = reduced @ model
+
+    plt.figure(figsize=(10, 8))
+
+    heatmap, xedges, yedges = np.histogram2d(
+        reduced_2d[:, 0], reduced_2d[:, 1], bins=30, weights=participant_scores
+    )
+    heatmap = gaussian_filter(heatmap, sigma=3)
+
+    heatmap = heatmap.T
+    heatmap /= np.abs(heatmap.sum()) + 1e-10
+
+    extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+    plt.imshow(
+        heatmap,
+        extent=extent,
+        origin="lower",
+        cmap="viridis",
+        alpha=0.5,
+        aspect="auto",
+    )
+
+    scatter = plt.scatter(
+        reduced_2d[:, 0],
+        reduced_2d[:, 1],
+        c=participant_scores,
+        cmap="viridis",
+        s=100,
+        edgecolor="k",
+    )
+    plt.colorbar(scatter, label="Participant Scores")
+
+    plt.title(f"Participant Distribution Colored by {variable_name} Scores")
+    plt.xlabel("Component 1")
+    plt.ylabel("Component 2")
+    plt.grid(True)
+
+    plt.savefig(Path("data/") / variable_name / "visualization.png")
+
+    return {"message": "Visualization saved."}
