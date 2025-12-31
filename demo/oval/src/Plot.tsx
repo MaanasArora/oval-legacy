@@ -23,8 +23,6 @@ export default function ScatterPlot({
     d3.extent(data, (d) => d.z) as [number, number]
   );
 
-  console.log(data);
-
   return (
     <div className="h-full w-full flex flex-col items-center justify-center">
       <svg width={width} height={height}>
