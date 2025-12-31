@@ -1,9 +1,11 @@
 export default function AppShell({
   sidebar,
   canvas,
+  analysis
 }: {
   sidebar: React.ReactNode;
   canvas: React.ReactNode;
+  analysis: React.ReactNode;
 }) {
   return (
     <div className="h-screen w-screen bg-slate-100 text-slate-800 flex flex-col">
@@ -30,6 +32,12 @@ export default function AppShell({
         <main className="flex-1 overflow-hidden p-6">
           <div className="h-full w-full rounded-xl border border-slate-200 bg-white">
             {canvas}
+          </div>
+        </main>
+
+        <main className="flex-1 overflow-hidden p-6">
+          <div className="h-full w-full rounded-xl border border-slate-200 bg-white">
+            {analysis}
           </div>
         </main>
       </div>

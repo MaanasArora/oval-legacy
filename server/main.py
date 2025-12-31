@@ -240,28 +240,13 @@ def visualize_variable(variable_name: str):
 
     participant_scores = reduced @ model
 
-    return {
-        "data": [
-            {
-                "x": reduced_2d[:, 0].tolist(),
-                "y": reduced_2d[:, 1].tolist(),
-                "z": participant_scores.tolist(),
-                "type": "scatter",
-                "mode": "markers",
-                "marker": {
-                    "size": 10,
-                    "color": participant_scores.tolist(),
-                    "colorscale": "Viridis",
-                    "colorbar": {"title": variable_name},
-                },
-            }
-        ],
-        "layout": {
-            "title": f"Participant Distribution Colored by {variable_name} Scores",
-            "xaxis": {"title": "Component 1"},
-            "yaxis": {"title": "Component 2"},
-        },
-    }
+    return pandas.DataFrame(
+        {
+            "x": reduced_2d[:, 0].tolist(),
+            "y": reduced_2d[:, 1].tolist(),
+            "z": participant_scores.tolist(),
+        }
+    ).to_dict(orient="records")
 
 
 @app.get("/save_image/{variable_name}")
