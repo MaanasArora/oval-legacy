@@ -2,8 +2,8 @@ import * as d3 from 'd3';
 
 export default function ScatterPlot({
   data,
-  width = 400,
-  height = 600,
+  width = 500,
+  height = 500,
   marginTop = 20,
   marginRight = 20,
   marginBottom = 20,
@@ -26,12 +26,14 @@ export default function ScatterPlot({
   console.log(data);
 
   return (
-    <svg width={width} height={height}>
-      <g fill="white">
-        {data.map((d, i) => (
-          <circle key={i} cx={x(d.x)} cy={y(d.y)} r={5} fill={color(d.z)} opacity={0.7} />
-        ))}
-      </g>
-    </svg>
+    <div className="h-full w-full flex flex-col items-center justify-center">
+      <svg width={width} height={height}>
+        <g fill="white">
+          {data.map((d, i) => (
+            <circle key={i} cx={x(d.x)} cy={y(d.y)} r={5} fill={color(d.z)} opacity={0.7} />
+          ))}
+        </g>
+      </svg>
+    </div>
   );
 }
