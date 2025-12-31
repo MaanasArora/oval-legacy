@@ -1,3 +1,4 @@
+from io import BytesIO
 from pathlib import Path
 import numpy as np
 import pandas
@@ -5,7 +6,9 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter
 from matplotlib import pyplot as plt
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 
@@ -31,9 +34,7 @@ def decompose_votes(
     return transformed * vote_scale[:, None], pca
 
 
-def process_csv(
-    comments_csv: Path, votes_matrix_csv: Path, random_state: int, num_components: int
-):
+def process_csv(comments_csv, votes_matrix_csv, random_state: int, num_components: int):
     content_df = pandas.read_csv(comments_csv)
     votes_matrix_df = pandas.read_csv(votes_matrix_csv)
 
@@ -124,12 +125,18 @@ def save_model(model, report_dir: Path, filename: str = "regression_model.npy"):
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 engine = create_engine("sqlite:///./test.db")
 
 
 class LoadDataRequest(BaseModel):
-    comments_csv: Path
-    votes_matrix_csv: Path
     random_state: int = 42
     num_components: int = 8
 
@@ -145,10 +152,31 @@ class RegressVariableRequest(BaseModel):
 
 
 @app.post("/load_data/")
-def load_data(request: LoadDataRequest):
+def load_data(files: list[UploadFile] = File(...), request: LoadDataRequest = None):
+    comments_csv = None
+    votes_matrix_csv = None
+    for file in files:
+        if not file.filename:
+            continue
+        if "comments" in file.filename:
+            comments_csv = file
+        elif "votes" in file.filename:
+            votes_matrix_csv = file
+
+    if request is None:
+        request = LoadDataRequest()
+
+    comments_csv = BytesIO(comments_csv.file.read()) if comments_csv else None
+    votes_matrix_csv = (
+        BytesIO(votes_matrix_csv.file.read()) if votes_matrix_csv else None
+    )
+
+    if not comments_csv or not votes_matrix_csv:
+        raise HTTPException(status_code=400, detail="Missing required CSV files.")
+
     reduced, comments, votes_matrix, _, reduced_2d, _ = process_csv(
-        request.comments_csv,
-        request.votes_matrix_csv,
+        comments_csv,
+        votes_matrix_csv,
         request.random_state,
         request.num_components,
     )
@@ -159,7 +187,7 @@ def load_data(request: LoadDataRequest):
 
     return {
         "reduced_shape": reduced.shape,
-        "num_comments": len(comments),
+        "comments": comments.reset_index().to_dict(orient="records"),
         "votes_matrix_shape": votes_matrix.shape,
     }
 
@@ -212,6 +240,38 @@ def visualize_variable(variable_name: str):
 
     participant_scores = reduced @ model
 
+    return {
+        "data": [
+            {
+                "x": reduced_2d[:, 0].tolist(),
+                "y": reduced_2d[:, 1].tolist(),
+                "z": participant_scores.tolist(),
+                "type": "scatter",
+                "mode": "markers",
+                "marker": {
+                    "size": 10,
+                    "color": participant_scores.tolist(),
+                    "colorscale": "Viridis",
+                    "colorbar": {"title": variable_name},
+                },
+            }
+        ],
+        "layout": {
+            "title": f"Participant Distribution Colored by {variable_name} Scores",
+            "xaxis": {"title": "Component 1"},
+            "yaxis": {"title": "Component 2"},
+        },
+    }
+
+
+@app.get("/save_image/{variable_name}")
+def save_visualization(variable_name: str):
+    reduced = np.load(Path("data/reduced.npy"))
+    reduced_2d = np.load(Path("data/reduced_2d.npy"))
+    model = np.load(Path("data/") / variable_name / "regression_model.npy")
+
+    participant_scores = reduced @ model
+
     plt.figure(figsize=(10, 8))
 
     heatmap, xedges, yedges = np.histogram2d(
@@ -249,4 +309,4 @@ def visualize_variable(variable_name: str):
 
     plt.savefig(Path("data/") / variable_name / "visualization.png")
 
-    return {"message": "Visualization saved."}
+    return FileResponse(Path("data/") / variable_name / "visualization.png")
