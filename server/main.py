@@ -229,6 +229,13 @@ def get_scored_comments(variable_name: str):
     scored_comments = pandas.read_csv(
         Path("data/") / variable_name / "scored_comments.csv"
     )
+
+    min_score = scored_comments["score"].min()
+    max_score = scored_comments["score"].max()
+    scored_comments["score"] = 2 * (
+        (scored_comments["score"] - min_score) / (max_score - min_score)
+    ) - 1
+
     return scored_comments.to_dict(orient="records")
 
 

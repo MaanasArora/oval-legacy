@@ -1,8 +1,38 @@
 import { useState } from 'react';
 import AppShell from './AppShell';
 import UploadFiles, { type LoadedData, type Comment } from './Upload';
-import MakeVariable from './VariableConfigure';
+import MakeVariable, { variableNameToSnakeCase } from './VariableConfigure';
 import ScatterPlot from './Plot';
+import { AnalysisPanel } from './Analysis';
+
+export interface VariableComment {
+  score: number;
+  text: string;
+}
+
+const getScoredCommentsApi = async (
+  variableName: string
+): Promise<VariableComment[]> => {
+  const response = await fetch(
+    `http://localhost:8000/comments/${variableNameToSnakeCase(variableName)}`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch scored comments');
+  }
+
+  const data = await response.json();
+  return data.map((comment: any) => ({
+    score: comment.score,
+    text: comment['comment-body'],
+  })) as VariableComment[];
+};
 
 export default function App() {
   const [loaded, setLoaded] = useState<boolean>(false);
@@ -11,6 +41,17 @@ export default function App() {
     useState<string>('');
   const [variableName, setVariableName] = useState<string | null>(null);
   const [visualizationData, setVisualizationData] = useState<any>(null);
+  const [variableComments, setVariableComments] = useState<VariableComment[]>(
+    []
+  );
+
+  const update = async (visualizationData: any) => {
+    setVisualizationData(visualizationData);
+    if (variableName) {
+      const scoredComments = await getScoredCommentsApi(variableName);
+      setVariableComments(scoredComments);
+    }
+  };
 
   return (
     <AppShell
@@ -41,7 +82,7 @@ export default function App() {
           <MakeVariable
             comments={comments}
             variableName={variableName}
-            onUpdate={setVisualizationData}
+            onUpdate={update}
           />
         )
       }
@@ -56,9 +97,11 @@ export default function App() {
           </div>
         )
       }
-      analysis={<div className="flex h-full w-full items-center justify-center text-slate-400">
-        Analysis Panel (Coming Soon)
-      </div>}
+      analysis={
+        <div className="flex h-full w-full items-center justify-center text-slate-400">
+          <AnalysisPanel comments={variableComments} />
+        </div>
+      }
     />
   );
 }

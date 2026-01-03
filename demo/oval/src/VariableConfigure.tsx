@@ -47,7 +47,7 @@ const getVisualizationApi = async (variableName: string) => {
   return response.json();
 };
 
-const variableNameToSnakeCase = (name: string) => {
+export const variableNameToSnakeCase = (name: string) => {
   return name.toLowerCase().replace(/\s+/g, '_');
 };
 
