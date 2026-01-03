@@ -80,6 +80,39 @@ def save_comments(
     comments.to_csv(report_dir / filename, index=True)
 
 
+def get_representative_comments_for_component(
+    comments: pandas.DataFrame, component_index: int, top_n: int = 3
+):
+    component_col = f"component_{component_index + 1}"
+    component_scores = comments[component_col]
+
+    normalized_scores = (component_scores - component_scores.mean()) / (
+        component_scores.std() + 1e-10
+    )
+    normalized_scores_abs = normalized_scores.abs()
+
+    top = normalized_scores_abs.nlargest(top_n)
+    representative_comments = comments.loc[top.index]
+
+    return representative_comments
+
+
+def get_and_shuffle_representative_comments(
+    comments: pandas.DataFrame, num_components: int, top_n: int = 3
+):
+    representative_comments = pandas.DataFrame()
+    for i in range(num_components):
+        reps = get_representative_comments_for_component(
+            comments, component_index=i, top_n=top_n
+        )
+        representative_comments = pandas.concat([representative_comments, reps])
+
+    representative_comments = representative_comments.drop_duplicates().sample(
+        frac=1, random_state=random_state
+    )
+    return representative_comments
+
+
 def regress_variable(reduced: np.ndarray, variable: np.ndarray):
     model = LinearRegression(fit_intercept=False)
     model.fit(reduced, variable)
@@ -185,9 +218,16 @@ def load_data(files: list[UploadFile] = File(...), request: LoadDataRequest = No
     save_reduced(reduced_2d, report_dir=Path("data/"), filename="reduced_2d.npy")
     save_comments(comments, report_dir=Path("data/"), filename="comments.csv")
 
+    representative_comments = get_and_shuffle_representative_comments(
+        comments, num_components=request.num_components, top_n=3
+    )
+    representative_comments = representative_comments.reset_index().to_dict(
+        orient="records"
+    )
+
     return {
         "reduced_shape": reduced.shape,
-        "comments": comments.reset_index().to_dict(orient="records"),
+        "comments": representative_comments,
         "votes_matrix_shape": votes_matrix.shape,
     }
 
@@ -232,9 +272,9 @@ def get_scored_comments(variable_name: str):
 
     min_score = scored_comments["score"].min()
     max_score = scored_comments["score"].max()
-    scored_comments["score"] = 2 * (
-        (scored_comments["score"] - min_score) / (max_score - min_score)
-    ) - 1
+    scored_comments["score"] = (
+        2 * ((scored_comments["score"] - min_score) / (max_score - min_score)) - 1
+    )
 
     return scored_comments.to_dict(orient="records")
 
