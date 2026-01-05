@@ -270,10 +270,10 @@ def get_scored_comments(variable_name: str):
         Path("data/") / variable_name / "scored_comments.csv"
     )
 
-    min_score = scored_comments["score"].min()
-    max_score = scored_comments["score"].max()
+    mean_score = scored_comments["score"].mean()
+    std_score = scored_comments["score"].std()
     scored_comments["score"] = (
-        2 * ((scored_comments["score"] - min_score) / (max_score - min_score)) - 1
+        (scored_comments["score"] - mean_score) / (std_score + 1e-10)
     )
 
     return scored_comments.to_dict(orient="records")
