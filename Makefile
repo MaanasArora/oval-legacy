@@ -1,8 +1,9 @@
-start: ## Start both frontend and backend dev servers
-	cd demo/oval && npm run dev & uv run uvicorn server.main:app --reload & wait
+dev: ## Start both frontend and backend dev servers
+	(cd demo/oval && npm run dev) & (cd server && uv run fastapi dev) & wait
 
 install: ## Install all dependencies
 	cd demo/oval && npm install
+	cd server && uv sync
 
 build: ## Build frontend for production
 	cd demo/oval && npm run build

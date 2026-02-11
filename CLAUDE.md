@@ -9,33 +9,25 @@ OVAL (Opinion Visualization with Annotated Labels) is an experimental tool for v
 ## Repository Structure
 
 - `demo/oval/` — React/TypeScript frontend (Vite + Tailwind CSS)
-- `server/main.py` — FastAPI backend (single file, all endpoints and data processing)
+- `server/` — FastAPI backend (Python, managed by uv)
 - `data/` — Runtime data directory (gitignored), stores numpy arrays and scored CSVs
 
 ## Development Commands
 
-### Frontend (run from `demo/oval/`)
-
 ```bash
-npm run dev        # Start Vite dev server with HMR
-npm run build      # TypeScript check + production build
-npm run lint       # ESLint
-npm run preview    # Preview production build
+make install       # Install frontend (npm) and backend (uv) dependencies
+make dev           # Start both frontend and backend dev servers
+make build         # TypeScript check + production build
+make lint          # ESLint
 ```
 
-### Backend (run from project root)
-
-```bash
-uvicorn server.main:app --reload    # Start FastAPI dev server on :8000
-```
-
-Both servers must be running simultaneously. The frontend hardcodes API calls to `http://localhost:8000`.
+Both servers must be running simultaneously (`make dev` handles this). The frontend hardcodes API calls to `http://localhost:8000`.
 
 ## Architecture
 
 ### Data Flow
 
-1. **Upload** — User uploads two CSVs (comments + votes matrix) → `POST /load_data/`
+1. **Upload** — User uploads two CSVs (comments + votes matrix) or a single h5ad file → `POST /load_data/`
 2. **PCA** — Backend decomposes vote matrix into principal components (default 8), saves to `data/`
 3. **Annotation** — Frontend presents representative comments (top 3 per component, shuffled), user rates each on a 1-5 scale
 4. **Regression** — Ratings are sent to `POST /regress_variable/`, which fits a linear regression mapping PCA components to user scores
