@@ -4,6 +4,8 @@
 
 Users upload CSV files of comments and vote matrices, annotate representative comments on a scale, and the system uses PCA + linear regression to score and visualize all comments along user-defined dimensions.
 
+![Screenshot of OVAL](docs/screenshot.png)
+
 ## Getting Started
 
 ### Prerequisites
