@@ -35,9 +35,10 @@ const regressVariableApi = async (request: RegressVariableRequest) => {
   return response.json();
 };
 
-const getVisualizationApi = async (variableName: string) => {
+const getVisualizationApi = async (variableName: string, projection?: string) => {
+  const projParam = projection && projection !== 'pca' ? `?projection=${projection}` : '';
   const response = await fetch(
-    `http://localhost:8000/visualize/${variableName}`
+    `http://localhost:8000/visualize/${variableName}${projParam}`
   );
 
   if (!response.ok) {
@@ -55,10 +56,12 @@ export default function MakeVariable({
   comments,
   variableName,
   onUpdate,
+  projection,
 }: {
   comments: Comment[];
   variableName: string;
   onUpdate?: (data: any) => void;
+  projection?: string;
 }) {
   const [currentCommentIndex, setCurrentCommentIndex] = useState<number>(0);
   const [responses, setResponses] = useState<Record<number, number>>({});
@@ -76,7 +79,8 @@ export default function MakeVariable({
 
     if (onUpdate) {
       const vizData = await getVisualizationApi(
-        variableNameToSnakeCase(variableName)
+        variableNameToSnakeCase(variableName),
+        projection
       );
       onUpdate(vizData);
     }
