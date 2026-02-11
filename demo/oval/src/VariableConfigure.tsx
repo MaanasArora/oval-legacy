@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Comment } from './Upload';
 
 const SCALE = {
@@ -8,6 +8,8 @@ const SCALE = {
   High: 1,
   'Very High': 2,
 };
+
+const SCALE_KEYS = Object.keys(SCALE) as (keyof typeof SCALE)[];
 
 interface CommentVariableMapping {
   comment_id: number;
@@ -89,6 +91,26 @@ export default function MakeVariable({
     updateRegression();
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (currentCommentIndex >= comments.length) return;
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 5) {
+        const label = SCALE_KEYS[num - 1];
+        const scaleValue = SCALE[label];
+        setResponses((prev) => ({
+          ...prev,
+          [comments[currentCommentIndex]['comment-id']]: scaleValue,
+        }));
+        setCurrentCommentIndex(currentCommentIndex + 1);
+        updateRegression();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCommentIndex, comments]);
+
   return (
     <div className="max-w-xl space-y-6">
       {/* Prompt */}
@@ -103,14 +125,14 @@ export default function MakeVariable({
 
       {currentCommentIndex < comments.length && (
         <>
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="h-32 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm leading-relaxed text-slate-700">
               {comments[currentCommentIndex]['comment-body']}
             </p>
           </div>
 
           <div className="space-y-2">
-            {Object.keys(SCALE).map((label) => (
+            {SCALE_KEYS.map((label, i) => (
               <button
                 key={label}
                 onClick={() =>
@@ -120,7 +142,7 @@ export default function MakeVariable({
                   )
                 }
                 className="w-full rounded-md border border-slate-300 bg-slate-50 px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                {label}
+                {i + 1} &mdash; {label}
               </button>
             ))}
           </div>
