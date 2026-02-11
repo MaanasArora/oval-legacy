@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AppShell from './AppShell';
 import UploadFiles, { type LoadedData, type Comment } from './Upload';
 import MakeVariable, { variableNameToSnakeCase } from './VariableConfigure';
@@ -8,6 +8,15 @@ import { AnalysisPanel } from './Analysis';
 export interface VariableComment {
   score: number;
   text: string;
+}
+
+function formatProjectionName(name: string): string {
+  if (name === 'pca') return 'PCA (computed)';
+  const stripped = name.replace(/^X_/, '');
+  const lower = stripped.toLowerCase();
+  if (lower === 'umap') return 'UMAP';
+  if (lower === 'tsne' || lower === 't-sne') return 't-SNE';
+  return stripped;
 }
 
 const getScoredCommentsApi = async (
@@ -44,14 +53,31 @@ export default function App() {
   const [variableComments, setVariableComments] = useState<VariableComment[]>(
     []
   );
+  const [availableProjections, setAvailableProjections] = useState<string[]>(['pca']);
+  const [selectedProjection, setSelectedProjection] = useState<string>('pca');
 
-  const update = async (visualizationData: any) => {
+  const update = useCallback(async (visualizationData: any) => {
     setVisualizationData(visualizationData);
     if (variableName) {
       const scoredComments = await getScoredCommentsApi(variableName);
       setVariableComments(scoredComments);
     }
-  };
+  }, [variableName]);
+
+  // Re-fetch visualization when projection changes
+  useEffect(() => {
+    if (!variableName || !visualizationData) return;
+    const snakeName = variableNameToSnakeCase(variableName);
+    const projParam = selectedProjection !== 'pca' ? `?projection=${selectedProjection}` : '';
+    fetch(`http://localhost:8000/visualize/${snakeName}${projParam}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch visualization');
+        return res.json();
+      })
+      .then((data) => setVisualizationData(data))
+      .catch((err) => console.error('Projection switch error:', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjection]);
 
   return (
     <AppShell
@@ -60,6 +86,7 @@ export default function App() {
           <UploadFiles
             onFinish={(data: LoadedData) => {
               setComments(data.comments);
+              setAvailableProjections(data.available_projections ?? ['pca']);
               setLoaded(true);
             }}
           />
@@ -83,6 +110,7 @@ export default function App() {
             comments={comments}
             variableName={variableName}
             onUpdate={update}
+            projection={selectedProjection}
           />
         )
       }
@@ -92,7 +120,26 @@ export default function App() {
             No visualization yet.
           </div>
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-slate-400">
+          <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
+            {availableProjections.length > 1 && (
+              <div className="mb-2">
+                <label htmlFor="projection-select" className="mr-2 text-sm text-slate-600">
+                  Projection:
+                </label>
+                <select
+                  id="projection-select"
+                  value={selectedProjection}
+                  onChange={(e) => setSelectedProjection(e.target.value)}
+                  className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700"
+                >
+                  {availableProjections.map((p) => (
+                    <option key={p} value={p}>
+                      {formatProjectionName(p)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <ScatterPlot data={visualizationData} />
           </div>
         )

@@ -6,7 +6,7 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage import gaussian_filter
 from matplotlib import pyplot as plt
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -188,10 +188,13 @@ class RegressVariableRequest(BaseModel):
 def load_data(files: list[UploadFile] = File(...), request: LoadDataRequest = None):
     comments_csv = None
     votes_matrix_csv = None
+    projection_files = []
     for file in files:
         if not file.filename:
             continue
-        if "comments" in file.filename:
+        if file.filename.startswith("projection_"):
+            projection_files.append(file)
+        elif "comments" in file.filename:
             comments_csv = file
         elif "votes" in file.filename:
             votes_matrix_csv = file
@@ -218,6 +221,17 @@ def load_data(files: list[UploadFile] = File(...), request: LoadDataRequest = No
     save_reduced(reduced_2d, report_dir=Path("data/"), filename="reduced_2d.npy")
     save_comments(comments, report_dir=Path("data/"), filename="comments.csv")
 
+    # Persist projection embeddings from h5ad obsm
+    available_projections = ["pca"]
+    projections_dir = Path("data/projections")
+    projections_dir.mkdir(parents=True, exist_ok=True)
+    for pf in projection_files:
+        name = pf.filename.removeprefix("projection_").removesuffix(".csv")
+        df = pandas.read_csv(BytesIO(pf.file.read()))
+        arr = df[["x", "y"]].values
+        np.save(projections_dir / f"{name}.npy", arr)
+        available_projections.append(name)
+
     representative_comments = get_and_shuffle_representative_comments(
         comments, num_components=request.num_components, top_n=3
     )
@@ -229,6 +243,7 @@ def load_data(files: list[UploadFile] = File(...), request: LoadDataRequest = No
         "reduced_shape": reduced.shape,
         "comments": representative_comments,
         "votes_matrix_shape": votes_matrix.shape,
+        "available_projections": available_projections,
     }
 
 
@@ -280,10 +295,17 @@ def get_scored_comments(variable_name: str):
 
 
 @app.get("/visualize/{variable_name}")
-def visualize_variable(variable_name: str):
+def visualize_variable(variable_name: str, projection: str = Query(default="pca")):
     reduced = np.load(Path("data/reduced.npy"))
-    reduced_2d = np.load(Path("data/reduced_2d.npy"))
     model = np.load(Path("data/") / variable_name / "regression_model.npy")
+
+    if projection == "pca":
+        reduced_2d = np.load(Path("data/reduced_2d.npy"))
+    else:
+        proj_path = Path("data/projections") / f"{projection}.npy"
+        if not proj_path.exists():
+            raise HTTPException(status_code=404, detail=f"Projection '{projection}' not found.")
+        reduced_2d = np.load(proj_path)
 
     participant_scores = reduced @ model
 

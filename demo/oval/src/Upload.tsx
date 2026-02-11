@@ -10,6 +10,7 @@ export interface LoadedData {
   reduced_shape: number[];
   comments: Comment[];
   votes_matrix_shape: number[];
+  available_projections?: string[];
 }
 
 const loadDataApi = async (files: File[]) => {
@@ -65,6 +66,16 @@ export default function UploadFiles({ onFinish }: { onFinish: (data: LoadedData)
           new File([commentsBlob], 'comments.csv', { type: 'text/csv' }),
           new File([votesBlob], 'votes.csv', { type: 'text/csv' }),
         ];
+
+        // Create projection CSV files from obsm embeddings
+        for (const [name, points] of Object.entries(parsed.embeddings)) {
+          const lines = ['x,y'];
+          for (const [x, y] of points) {
+            lines.push(`${x},${y}`);
+          }
+          const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+          files.push(new File([blob], `projection_${name}.csv`, { type: 'text/csv' }));
+        }
       } else {
         files = Array.from(selectedFiles);
       }

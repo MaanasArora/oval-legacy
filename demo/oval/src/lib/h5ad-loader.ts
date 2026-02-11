@@ -6,6 +6,7 @@ export type H5adParsed = {
   participantIds: string[];
   commentIds: string[];
   votesMatrix: (number | null)[][];
+  embeddings: Record<string, number[][]>;
 };
 
 /**
@@ -155,7 +156,45 @@ export async function loadH5adFile(buffer: ArrayBuffer): Promise<H5adParsed> {
       votesMatrix.push(row);
     }
 
-    return { comments, participantIds, commentIds, votesMatrix };
+    // Read .obsm embeddings (UMAP, t-SNE, etc.)
+    const embeddings: Record<string, number[][]> = {};
+    try {
+      const obsmGroup = file.get('obsm') as Group | null;
+      if (obsmGroup) {
+        for (const key of obsmGroup.keys()) {
+          try {
+            const ds = obsmGroup.get(key);
+            if (!ds || !('shape' in ds)) continue;
+            const dataset = ds as Dataset;
+            const dsShape = dataset.shape;
+            if (!dsShape || dsShape.length !== 2 || dsShape[0] !== nObs || dsShape[1] < 2) continue;
+
+            const rawEmb = dataset.value;
+            let flatEmb: number[];
+            if (ArrayBuffer.isView(rawEmb)) {
+              flatEmb = Array.from(rawEmb as Float64Array | Float32Array);
+            } else if (Array.isArray(rawEmb)) {
+              flatEmb = (rawEmb as number[][]).flat();
+            } else {
+              continue;
+            }
+
+            const cols = dsShape[1];
+            const points: number[][] = [];
+            for (let i = 0; i < nObs; i++) {
+              points.push([flatEmb[i * cols], flatEmb[i * cols + 1]]);
+            }
+            embeddings[key] = points;
+          } catch {
+            // Skip unreadable entries (sparse matrices, etc.)
+          }
+        }
+      }
+    } catch {
+      // No obsm group or unreadable — continue without embeddings
+    }
+
+    return { comments, participantIds, commentIds, votesMatrix, embeddings };
   } finally {
     if (file) {
       file.close();
